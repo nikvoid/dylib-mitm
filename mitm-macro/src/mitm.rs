@@ -5,6 +5,8 @@ use syn::Ident;
 use proc_macro2::Span;
 use quote::quote;
 
+
+
 fn get_proc_names(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CStr>>> {
     let pe = PeFile::from_bytes(dll_img)?;
 
@@ -12,6 +14,8 @@ fn get_proc_names(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CStr>>> 
 }
 
 pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let crate_name = Ident::new("dylib_mitm", Span::mixed_site());
+
     let name = syn::parse_macro_input!(args as syn::LitStr).value();
 
     let lib_path = std::path::Path::new(&name);
@@ -56,12 +60,12 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
             static mut #sym_idents: unsafe fn() = || {};
         )*
 
-        #[allow(non_camel_case)]
-        struct #lib_struct(libloading::Library);
+        #[allow(non_camel_case_types)]
+        struct #lib_struct(#crate_name::libloading::Library);
 
         impl #lib_struct {
             pub unsafe fn init() {
-                #lib_ident = Some(Self(libloading::Library::new(#lib_path).expect("Failed to load library")));
+                #lib_ident = Some(Self(#crate_name::libloading::Library::new(#lib_path).expect("Failed to load library")));
                 let Some(#lib_struct(ref lib)) = #lib_ident else { unreachable!() };
 
                 #( #sym_idents = *lib.get(#procs.as_bytes()).expect("Failed to get symbol"); )*

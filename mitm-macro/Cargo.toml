@@ -1,15 +1,15 @@
 [package]
-name = "dylib-mitm"
+name = "mitm_macro"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "mitm_macro"
+proc-macro = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libloading = "0.7.4"
-mitm_macro = { path = "mitm-macro" }
-
-[workspace]
-members = [
-    "mitm-macro",
-]
+pelite = "0.10.0"
+proc-macro2 = "1.0.49"
+quote = "1.0.23"
+syn = "1.0.107"
