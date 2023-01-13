@@ -102,13 +102,25 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
             #[allow(non_snake_case)]
             #[no_mangle]
             pub unsafe extern "C" fn #export_idents() {
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                // For some reason intel syntax doesn't do it right...
+                // See https://users.rust-lang.org/t/asm-how-to-do-a-memory-indirect-jump-using-x86-asm/67352
+                #[cfg(target_arch = "x86")]
                 std::arch::asm!(
+                    // Just Works
                     "jmpl *({proc})",
                     proc = sym #sym_idents,
                     options(att_syntax, noreturn, nostack)
                 );
-            }
+
+                #[cfg(target_arch = "x86_64")]
+                std::arch::asm!(
+                    // RIP-relative addressing needed
+                    "jmpq *{proc}(%rip)",
+                    proc = sym #sym_idents,
+                    options(att_syntax, noreturn, nostack)
+                );
+
+         }
         )*
     }.into()
 }
