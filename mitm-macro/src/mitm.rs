@@ -106,7 +106,7 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
                 std::arch::asm!(
                     "jmpl *({proc})",
                     proc = sym #sym_idents,
-                    options(att_syntax)
+                    options(att_syntax, noreturn, nostack)
                 );
             }
         )*
