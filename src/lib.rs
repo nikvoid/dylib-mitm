@@ -2,6 +2,7 @@
 //!
 //! Currently supported targets:
 //! - Windows x64
+//! - Windows x86
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -28,6 +29,16 @@ extern crate mitm_macro;
 /// ```
 #[doc(inline)]
 pub use mitm_macro::dylib_mitm;
+
+/// Does the same thing as [dylib_mitm], but needs target arch and os to be specified
+///
+/// Actually [dylib_mitm] is just a wrapper that passes os and arch based on build target
+/// # Example
+/// ```no_test
+/// dylib_mitm_specified!(os = "windows", arch = "x86_64", target_lib = "C:\\Windows\\system32\\d3d9.dll");
+/// ```
+#[doc(inline)]
+pub use mitm_macro::dylib_mitm_specified;
 
 #[doc(hidden)]
 pub use libloading;

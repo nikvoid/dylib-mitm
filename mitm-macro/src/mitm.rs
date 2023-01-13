@@ -1,28 +1,54 @@
-use pelite::pe64::{Pe, PeFile};
-use pelite::util::CStr;
-use pelite::FileMap;
-use syn::Ident;
+use syn::{Ident, AttributeArgs, parse_macro_input};
 use proc_macro2::Span;
 use quote::quote;
 
+use pelite::util::CStr;
+use pelite::FileMap;
 
+use darling::FromMeta;
 
-fn get_proc_names(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CStr>>> {
+#[derive(Debug, FromMeta)]
+struct DylibMitmArgs {
+    os: String,
+    arch: String,
+    target_lib: String
+}
+
+fn get_proc_names_win32(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CStr>>> {
+    use pelite::pe32::{Pe, PeFile};
+
     let pe = PeFile::from_bytes(dll_img)?;
+    Ok(pe.exports()?.by()?.iter_names().map(|(name, _)| name).collect())
+}
 
+fn get_proc_names_win64(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CStr>>> {
+    use pelite::pe64::{Pe, PeFile};
+
+    let pe = PeFile::from_bytes(dll_img)?;
     Ok(pe.exports()?.by()?.iter_names().map(|(name, _)| name).collect())
 }
 
 pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let crate_name = Ident::new("dylib_mitm", Span::mixed_site());
 
-    let name = syn::parse_macro_input!(args as syn::LitStr).value();
+    let args = parse_macro_input!(args as AttributeArgs);
 
-    let lib_path = std::path::Path::new(&name);
+    let args = match DylibMitmArgs::from_list(&args) {
+        Ok(v) => v,
+        Err(e) => { return proc_macro::TokenStream::from(e.write_errors()); }
+    };
 
-    let dll = FileMap::open(&name).expect("Failed to open dll");
+    let lib_path = std::path::Path::new(&args.target_lib);
 
-    let procs = get_proc_names(dll.as_ref()).expect("Failed to get proc names");
+    let dll = FileMap::open(&args.target_lib).expect("Failed to open dll");
+
+    let procs = match (args.os.as_str(), args.arch.as_str()) {
+        ("windows", "x86") =>
+            get_proc_names_win32(dll.as_ref()).expect("Failed to get proc names"),
+        ("windows", "x86_64") =>
+            get_proc_names_win64(dll.as_ref()).expect("Failed to get proc names"),
+        _ => panic!("Current target unsupported")
+    };
 
     let procs = procs.into_iter().enumerate().map(|(idx, res)| match res {
         Ok(name) => name.to_str().expect("Failed to convert proc to str"),
@@ -76,9 +102,11 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
             #[allow(non_snake_case)]
             #[no_mangle]
             pub unsafe extern "C" fn #export_idents() {
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 std::arch::asm!(
-                    "call [rdi]",
-                    inout("rdi") &#sym_idents => _,
+                    "jmpl *({proc})",
+                    proc = sym #sym_idents,
+                    options(att_syntax)
                 );
             }
         )*
