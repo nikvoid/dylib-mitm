@@ -1,4 +1,4 @@
-use syn::{Ident, AttributeArgs, parse_macro_input};
+use syn::{Ident, AttributeArgs, parse_macro_input, Expr};
 use proc_macro2::Span;
 use quote::quote;
 
@@ -7,11 +7,18 @@ use pelite::FileMap;
 
 use darling::FromMeta;
 
-#[derive(Debug, FromMeta)]
-struct DylibMitmArgs {
+#[derive(FromMeta)]
+struct DylibMitmSpecifiedArgs {
     os: String,
     arch: String,
-    target_lib: String
+    target_lib: String,
+    load_lib: Expr,
+}
+
+#[derive(FromMeta)]
+struct DylibMitmArgs {
+    proto_path: String,
+    load_lib: Option<String>,
 }
 
 fn get_proc_names_win32(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CStr>>> {
@@ -29,11 +36,47 @@ fn get_proc_names_win64(dll_img: &[u8]) -> pelite::Result<Vec<pelite::Result<&CS
 }
 
 pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+   
+    let args = match DylibMitmArgs::from_list(&args) {
+        Ok(v) => v,
+        Err(e) => { return proc_macro::TokenStream::from(e.write_errors()); }
+    };
+
+    let DylibMitmArgs { proto_path, load_lib } = args;
+
+    // If loading library expression not specified, load prototype dll  
+    let load_lib = load_lib.unwrap_or(format!("r\"{proto_path}\""));
+
+    quote! {
+        // Pass actual target os and arch to macro
+        #[cfg(all(windows, target_arch = "x86"))]
+        dylib_mitm::dylib_mitm_specified!(
+            os = "windows",
+            arch = "x86",
+            target_lib = #proto_path,
+            load_lib = #load_lib,
+        );
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        dylib_mitm::dylib_mitm_specified!(
+            os = "windows",
+            arch = "x86_64",
+            target_lib = #proto_path,
+            load_lib = #load_lib,
+        );
+
+        // Make macro panic
+        #[cfg(not(windows))]
+        compile_error!("unsupported target");
+    }.into()
+}
+
+pub fn impl_dylib_mitm_specified(args: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let crate_name = Ident::new("dylib_mitm", Span::mixed_site());
 
     let args = parse_macro_input!(args as AttributeArgs);
 
-    let args = match DylibMitmArgs::from_list(&args) {
+    let args = match DylibMitmSpecifiedArgs::from_list(&args) {
         Ok(v) => v,
         Err(e) => { return proc_macro::TokenStream::from(e.write_errors()); }
     };
@@ -64,9 +107,9 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
     }).collect();
 
     let mut lib_name = lib_path.file_name()
-        .map(|n|
+        .and_then(|n|
             n.to_str().map(|n| n.split('.').next().unwrap())
-        ).flatten().expect("Failed to get dylib name").to_string();
+        ).expect("Failed to get dylib name").to_string();
 
     lib_name = lib_name.replace('-', "_");
 
@@ -75,8 +118,8 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
     lib_name += "_LIB";
     let lib_ident = Ident::new(&lib_name.to_uppercase(), Span::call_site());
 
-    let lib_path = lib_path.to_string_lossy();
-
+    let load_lib_expr = args.load_lib;
+    
     quote! {
         #[allow(non_upper_case_globals)]
         static mut #lib_ident: Option<#lib_struct> = None;
@@ -91,7 +134,9 @@ pub fn impl_dylib_mitm(args: proc_macro::TokenStream) -> proc_macro::TokenStream
 
         impl #lib_struct {
             pub unsafe fn init() {
-                #lib_ident = Some(Self(#crate_name::libloading::Library::new(#lib_path).expect("Failed to load library")));
+                let actual_lib_path: &str = #load_lib_expr;
+                #lib_ident = Some(Self(#crate_name::libloading::Library::new(actual_lib_path)
+                    .expect("Failed to load library")));
                 let Some(#lib_struct(ref lib)) = #lib_ident else { unreachable!() };
 
                 #( #sym_idents = *lib.get(#procs.as_bytes()).expect("Failed to get symbol"); )*

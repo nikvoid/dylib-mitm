@@ -14,10 +14,11 @@ extern crate mitm_macro;
 ///
 /// Original library symbols are prefixed with `__` e.g. `__orig_symbol`.
 /// # Examples
+/// By default, library will be loaded from the same path as prototype to get symbols:
 /// ```
 /// # use mitm_macro::dylib_mitm;
 /// // Typical code injection through d3d9 dll
-/// dylib_mitm!("C:\\Windows\\system32\\d3d9.dll");
+/// dylib_mitm!(proto_path = "C:\\Windows\\system32\\d3d9.dll");
 ///
 /// pub extern "C" fn DllMain(_: *mut u8, call_reason: i32, _: *mut u8) {
 ///     println!("Called dllmain of mitm DLL!");
@@ -26,6 +27,16 @@ extern crate mitm_macro;
 ///         _ => (),
 ///     }
 /// }
+/// ```
+/// Also, path to library to load may be specified with arbitrary expression,
+/// that returns `&str`:
+/// ```no_test
+/// # use mitm_macro::dylib_mitm;
+/// // Can be used on WINE
+/// dylib_mitm!(
+///     proto_path = "path/to/wine's/d3d9.dll",
+///     load_lib = r#" "C:\\Windows\\system32\\d3d9.dll" "#
+/// );
 /// ```
 #[doc(inline)]
 pub use mitm_macro::dylib_mitm;
