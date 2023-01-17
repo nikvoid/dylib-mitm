@@ -13,6 +13,9 @@ extern crate mitm_macro;
 /// Library must be loaded with `lib_name::init()` as soon as possible.
 ///
 /// Original library symbols are prefixed with `__` e.g. `__orig_symbol`.
+/// 
+/// See [manual_impl] for manually implementing export behaviour.
+///
 /// # Examples
 /// By default, library will be loaded from the same path as prototype to get symbols:
 /// ```
@@ -70,6 +73,25 @@ macro_rules! dylib_mitm {
 /// ```
 #[doc(inline)]
 pub use mitm_macro::dylib_mitm_specified;
+
+/// Manually specified library export implementation.
+///  
+/// # Example 
+/// ```
+/// dylib_mitm::dylib_mitm!(
+///     proto_path = r"C:\Windows\SysWOW64\d3d9.dll",
+///     manual_impls = "Direct3DCreate9",
+/// );
+///
+/// #[allow(non_snake_case)]
+/// #[dylib_mitm::manual_impl]
+/// pub extern "C" fn Direct3DCreate9(version: u32) -> *mut u8 {
+///     println!("Called Direct3DCreate9");
+///     unsafe { __Direct3DCreate9(version) }
+/// }
+/// ```
+#[doc(inline)]
+pub use mitm_macro::manual_impl;
 
 #[doc(hidden)]
 pub use libloading;
